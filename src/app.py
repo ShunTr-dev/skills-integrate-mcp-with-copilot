@@ -5,22 +5,26 @@ A super simple FastAPI application that allows students to view and sign up
 for extracurricular activities at Mergington High School.
 """
 
-from fastapi import FastAPI, HTTPException
-from fastapi.staticfiles import StaticFiles
-from fastapi.responses import RedirectResponse
+import json
 import os
+from copy import deepcopy
 from pathlib import Path
+
+from fastapi import FastAPI, HTTPException
+from fastapi.responses import RedirectResponse
+from fastapi.staticfiles import StaticFiles
 
 app = FastAPI(title="Mergington High School API",
               description="API for viewing and signing up for extracurricular activities")
 
-# Mount the static files directory
 current_dir = Path(__file__).parent
-app.mount("/static", StaticFiles(directory=os.path.join(Path(__file__).parent,
-          "static")), name="static")
+activities_file = current_dir / "activities.json"
 
-# In-memory activity database
-activities = {
+# Mount the static files directory
+app.mount("/static", StaticFiles(directory=os.path.join(current_dir, "static")), name="static")
+
+# Default activity data used to seed the persistent store.
+default_activities = {
     "Chess Club": {
         "description": "Learn strategies and compete in chess tournaments",
         "schedule": "Fridays, 3:30 PM - 5:00 PM",
@@ -78,6 +82,23 @@ activities = {
 }
 
 
+def load_activities():
+    if activities_file.exists():
+        with activities_file.open("r", encoding="utf-8") as file_handle:
+            return json.load(file_handle)
+
+    save_activities(default_activities)
+    return deepcopy(default_activities)
+
+
+def save_activities(activity_data):
+    with activities_file.open("w", encoding="utf-8") as file_handle:
+        json.dump(activity_data, file_handle, indent=2)
+
+
+activities = load_activities()
+
+
 @app.get("/")
 def root():
     return RedirectResponse(url="/static/index.html")
@@ -107,6 +128,7 @@ def signup_for_activity(activity_name: str, email: str):
 
     # Add student
     activity["participants"].append(email)
+    save_activities(activities)
     return {"message": f"Signed up {email} for {activity_name}"}
 
 
@@ -129,4 +151,5 @@ def unregister_from_activity(activity_name: str, email: str):
 
     # Remove student
     activity["participants"].remove(email)
+    save_activities(activities)
     return {"message": f"Unregistered {email} from {activity_name}"}
